@@ -2,11 +2,24 @@ import telebot
 import math
 from telebot import types
 
-import re
 
 list_of_simple_oper = ["+", "-", "*", "/"]
-list_of_hard_oper_one = ["n!", "log10(n)", "10ⁿ", "ln(n)", "√n", "sin(n)", "cos(n)", "tg(n)"]
-list_of_hard_oper_two = ["xⁿ"]
+
+operations_one_num = {
+    "n!": math.factorial,
+    "log10(n)": math.log10,
+    "ln(n)": math.log,
+    "√n": math.sqrt,
+    "sin(n)": math.sin, 
+    "cos(n)": math.cos, 
+    "tg(n)": math.tan   
+}
+
+operations_two_num = {
+    "xⁿ"
+}
+
+
 bot = telebot.TeleBot("")
 
 
@@ -18,105 +31,94 @@ def start_bot(message):
         
         bot.send_message(message.from_user.id, "Привет, " + message.from_user.first_name + "!")
         bot.send_message(message.from_user.id, start_msg)
-        bot.send_message(message.from_user.id, "Введите простое выражение (+ - / *)")
         
     elif message.text == "/help":
         help_msg = ""
         bot.send_message(message.from_user.id, "Cправка не составлена")
 
-@bot.message_handler(regexp=r"\d+[+-/*]{1}\d+")
-def simple_oper(message):
-    calculator_operations(message)  
+
+
+@bot.message_handler(commands="calc")
+def calc(message):
+    markup_choose = types.ReplyKeyboardRemove(selective=True)
+    msg = bot.send_message(message.chat.id, "Введите выражение", reply_markup = markup_choose)
+    bot.register_next_step_handler(msg, result_calc) 
+
+def result_calc(message):
+    user_oper = message.text.lower()
+
+    if user_oper == "==":
+        bot.send_message(message.from_user.id, "Возвращаюсь")
+        return
+    else:
+        bot.send_message(message.chat.id, eval_expression(user_oper))
+
+def eval_expression(input_string):
+    
+    allowed_names = {
+        "ln":    math.log,
+        "sqrt":  math.sqrt,
+        "log10": math.log10,
+        "fact":  math.factorial,
+        "sin":   math.sin,
+        "cos":   math.cos,
+        "tg":    math.tan
+        }   
+    code = compile(input_string, "<string>", "eval")  
+    for name in code.co_names:
+        if name not in allowed_names:
+            raise NameError("Not allowed")
+    return eval(code, {"__builtins__": {}}, allowed_names) 
     
     
-@bot.message_handler(commands=["engcalc"])
+    
+@bot.message_handler(commands=["keycalc"])
 def engineer_oper(message):
     
-    choose_msg = f"""Сначала выбери выражение из предложенного списка. Либо напиши отмена"""
+    choose_msg = f"""Сначала выбери выражение из предложенного списка. Либо напиши "==" для отмены"""
     
     markup_choose = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    markup_choose.add(types.KeyboardButton("xⁿ"))
-    for val in list_of_hard_oper_one:
-        markup_choose.add(val)
-        
+    markup_choose.add(types.KeyboardButton("xⁿ"), types.KeyboardButton("n!"),types.KeyboardButton("log10(n)"),
+                      types.KeyboardButton("ln(n)"),types.KeyboardButton("√n"), types.KeyboardButton("sin(n)"), 
+                      types.KeyboardButton("cos(n)"),types.KeyboardButton("tg(n)"))
+    
     msg = bot.send_message(message.chat.id, choose_msg, reply_markup=markup_choose)
     bot.register_next_step_handler(msg, choose_oper) 
-
-
-
+    
+    
 def choose_oper(message):
+    
     global user_oper
     user_oper = message.text.lower()
     markup_choose = types.ReplyKeyboardRemove(selective=True)
-    if user_oper == "отмена":
-        bot.send_message(message.from_user.id, "Возвращаюсь")
+    if user_oper == "==":
+        bot.send_message(message.from_user.id, "Возвращаюсь", reply_markup= markup_choose)
         return
-    elif user_oper in list_of_hard_oper_two:
-        msg = bot.send_message(message.chat.id, "Введи два числа (x n) через пробел.\n(либо \"отмена\")", reply_markup=markup_choose)
+    elif user_oper in operations_two_num:
+        msg = bot.send_message(message.chat.id, "Введи два числа (x n) через пробел.\n(либо \"==\" для отмены)", reply_markup=markup_choose)
         bot.register_next_step_handler(msg, hard_oper)
-    elif user_oper in list_of_hard_oper_one:
-        msg = bot.send_message(message.chat.id, "Введи одно число (n).\n(либо \"отмена\")", reply_markup=markup_choose)
+    elif user_oper in operations_one_num:
+        msg = bot.send_message(message.chat.id, "Введи одно число (n).\n(либо \"==\" для отмены)", reply_markup=markup_choose)
         bot.register_next_step_handler(msg, hard_oper)
         
         
      
 def hard_oper(message):
     result = list(map(int, message.text.split()))
-    if user_oper == "отмена":
-        bot.send_message(message.from_user.id, "Возвращаюсь")
-        return 
-    elif user_oper == list_of_hard_oper_two[0]:
-        bot.send_message(message.chat.id, "Результат возведения в степень: " + str(result[0] ** result[1]))    
-    elif user_oper == list_of_hard_oper_one[0]:
-        bot.send_message(message.chat.id, "Результат факториала: " + str(math.factorial(result[0])))
-    elif user_oper == list_of_hard_oper_one[1]:
-        bot.send_message(message.chat.id, "Результат логарифма с основанием 10: " + str(math.log10(result[0])))
-    elif user_oper == list_of_hard_oper_one[2]:
-        bot.send_message(message.chat.id, "Результат 10 в степени: " + str(10 ** result[0]))
-    elif user_oper == list_of_hard_oper_one[3]:
-        bot.send_message(message.chat.id, "Результат натурального логарифма: " + str(math.log(result[0])))
-    elif user_oper == list_of_hard_oper_one[4]:
-        bot.send_message(message.chat.id, "Результат извлечения корня: " + str(math.sqrt(result[0])))
-    elif user_oper == list_of_hard_oper_one[5]:
-        bot.send_message(message.chat.id, "Результат синуса: " + str(math.sin(result[0])))
-    elif user_oper == list_of_hard_oper_one[6]:
-        bot.send_message(message.chat.id, "Результат косинуса: " + str(math.cos(result[0])))
-    elif user_oper == list_of_hard_oper_one[7]:
-        bot.send_message(message.chat.id, "Результат тангенса: " + str(math.tan(result[0])))
-
-        
-def calculator_operations(message):
-    user_oper = message.text
-    if user_oper.lower() == "отмена":
+    calculation = ""
+    if user_oper == "==":
         bot.send_message(message.from_user.id, "Возвращаюсь")
         return
-
-    else:
-        expression = user_oper.split()
-        symbol = define_simple_symbol(expression)
-        numberA, numberB = re.findall(r'\d+', ''.join(expression))
-        numberA = int(numberA)
-        numberB = int(numberB)
-        result = 0
-        if symbol == '+':
-            result = numberA + numberB
-        elif symbol == '-':
-            result = numberA - numberB
-        elif symbol == '/':
-            if numberB != 0:
-                result = numberA / numberB
-            else:
-                bot.send_message(message.from_user.id, "На ноль делить нельзя!") 
-        elif symbol == '*':
-            result = numberA * numberB
-        else:
-            bot.send_message(message.from_user.id, "Ошибка")
-        bot.send_message(message.from_user.id, "Результат вычисления:")
-        bot.send_message(message.from_user.id, result)
-
+    elif user_oper in operations_two_num:
+        calculation = str(result[0] ** result[1])
         
-def define_simple_symbol(phrase):
-    symbol_oper = re.findall(r'\D', ''.join(phrase))
-    return symbol_oper[0]            
-        
+    elif user_oper in operations_one_num:
+        operation = operations_one_num.get(user_oper)
+        calculation = str(operation(result[0]))
+
+
+    bot.send_message(message.chat.id, "Результат вычисления " + user_oper + " = " + calculation)
+    bot.send_message(message.chat.id, "/keycalc")        
+ 
+               
 bot.polling(none_stop=True, interval=0)
