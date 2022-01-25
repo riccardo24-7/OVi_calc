@@ -1,22 +1,9 @@
+from unittest import result
 import telebot
 import math
 from telebot import types
 import re
 import numpy as np
-
-operations_one_num = {
-    "n!": math.factorial,
-    "log10(n)": math.log10,
-    "ln(n)": math.log,
-    "√n": math.sqrt,
-    "sin(n)": math.sin, 
-    "cos(n)": math.cos, 
-    "tg(n)": math.tan   
-}
-
-operations_two_num = {
-    "xⁿ"
-}
 
 
 bot = telebot.TeleBot("")
@@ -40,30 +27,40 @@ def start_bot(message):
 
 
 @bot.message_handler(commands="calc")
-def calc(message):
+def command_calc(message):
     cid = message.chat.id
     markup_close = types.ReplyKeyboardRemove(selective=True)
     msg = bot.send_message(cid, "Введите выражение. \n(либо \"==\" для отмены)", reply_markup = markup_close)
-    bot.register_next_step_handler(msg, result_calc) 
+    bot.register_next_step_handler(msg, calc_expression) 
 
-def result_calc(message):
+def calc_expression(message):
     cid = message.chat.id
-    user_oper = message.text.lower()
+    calc_oper = message.text.lower()
 
-    if user_oper == "==":
+    if calc_oper == "==":
         bot.send_message(cid, "Возвращаюсь")
         return
     else:
-        bot.send_message(cid, "Результат вычисления " + user_oper + " = " + "<code>" + str(eval_expression(user_oper)) + "</code>")
-        calc(message)
+        result_calc = eval_expression(calc_oper)
+        
+        calc_inline_keyboard = types.InlineKeyboardMarkup()
+
+        if isinstance(result_calc, float):           
+            key_one = types.InlineKeyboardButton(text='Округлить до 2-x знаков', callback_data='round_two')
+            key_two = types.InlineKeyboardButton(text='Округлить до 3-х знаков', callback_data='round_three')
+            calc_inline_keyboard.add(key_one, key_two) 
+        
+        bot.send_message(cid, "Результат вычисления " + calc_oper + " = " + "<code>" + str(result_calc) + "</code>", parse_mode="HTML", reply_markup=calc_inline_keyboard)
+        command_calc(message)
 
 
 def eval_expression(input_string):
+    global result
     allowed_names = {
         "ln":    math.log,
         "sqrt":  math.sqrt,
         "log10": math.log10,
-        "fact":  math.factorial,
+        "factorial":  math.factorial,
         "sin":   math.sin,
         "cos":   math.cos,
         "tg":    math.tan
@@ -72,106 +69,144 @@ def eval_expression(input_string):
     for name in code.co_names:
         if name not in allowed_names:
             raise NameError("Not allowed")
-    return eval(code, {"__builtins__": {}}, allowed_names) 
+    result = eval(code, {"__builtins__": {}}, allowed_names)
+    return result
     
     
     
 @bot.message_handler(commands=["keycalc"])
-def engineer_oper(message):
+def command_keycalc(message):
     cid = message.chat.id
     choose_msg = f"""Сначала выбери выражение из предложенного списка. \n(либо \"==\" для отмены)"""
     markup_choose = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=3)
-    markup_choose.add(types.KeyboardButton("xⁿ"), types.KeyboardButton("n!"),types.KeyboardButton("log10(n)"),
-                    types.KeyboardButton("ln(n)"),types.KeyboardButton("√n"), types.KeyboardButton("sin(n)"), 
+    markup_choose.add(types.KeyboardButton("xⁿ"), types.KeyboardButton("factorial(n)"),types.KeyboardButton("log10(n)"),
+                    types.KeyboardButton("ln(n)"),types.KeyboardButton("sqrt(n)"), types.KeyboardButton("sin(n)"), 
                     types.KeyboardButton("cos(n)"),types.KeyboardButton("tg(n)"))
     msg = bot.send_message(cid, choose_msg, reply_markup=markup_choose)
-    bot.register_next_step_handler(msg, choose_oper) 
+    bot.register_next_step_handler(msg, keycalc_enter) 
     
     
-def choose_oper(message):
+def keycalc_enter(message):
     cid = message.chat.id
-    global user_oper
-    user_oper = message.text.lower()
+    keycalc_oper = message.text.lower()
     markup_close = types.ReplyKeyboardRemove(selective=True)
-    if user_oper == "==":
+    
+    if keycalc_oper == "==":
         bot.send_message(cid, "Возвращаюсь", reply_markup= markup_close)
         return
-    elif user_oper in operations_two_num:
+
+    text_msg = f"Введи одно число (n).\n(либо \"==\" для отмены)"
+    if keycalc_oper == "xⁿ":
+        keycalc_oper = "x**n"
+        text_msg = f"Введи два числа (x n) через пробел.\n(либо \"==\" для отмены)"
         
-        msg = bot.send_message(cid, "Введи два числа (x n) через пробел.\n(либо \"==\" для отмены)", reply_markup=markup_close)
-        bot.register_next_step_handler(msg, hard_oper)
-    elif user_oper in operations_one_num:
-        msg = bot.send_message(cid, "Введи одно число (n).\n(либо \"==\" для отмены)", reply_markup=markup_close)       
-        bot.register_next_step_handler(msg, hard_oper)
+    msg = bot.send_message(cid, text_msg, reply_markup=markup_close)     
+    bot.register_next_step_handler(msg, keycalc_pattern, keycalc_oper)
         
         
      
-def hard_oper(message):
+def keycalc_pattern(message, keycalc_oper):
     cid = message.chat.id
+    text = message.text
     markup_close = types.ReplyKeyboardRemove(selective=True)
     angle = ""
-    
-    if message.text == "==":
+        
+    if text == "==":
         bot.send_message(cid, "Возвращаюсь", reply_markup= markup_close)
         return
-    else:
-        result = list(map(int, message.text.split()))
-        calculation = ""
-        if user_oper in operations_two_num:
-            calculation = str(result[0] ** result[1])
+    
+    # if len(text) == 1:
+    text = re.sub(r"\([n]\)", "(" + text + ")", keycalc_oper)
+    if keycalc_oper == "x**n":
+        list_text = text.split(" ")
+        text = re.sub(r"[x]", list_text[0], keycalc_oper)
+        text = re.sub(r"[n]+", list_text[1], text)
+    
+    result_keycalc = eval_expression(text)
+    
+    if keycalc_oper in ["sin(n)", "cos(n)", "tg(n)"]:
+        angle = "rad" 
         
-        elif user_oper in operations_one_num:
-            global operation
-            operation = operations_one_num.get(user_oper)
-            global result_calc
-            global perem
-            perem = result[0]
-            result_calc = operation(result[0])
-            if operation.__name__ in ["sin", "cos", "tan"]:
-                angle = "rad"
-                calculation = "<code>" + str(result_calc) + "</code>" + " <b>" + angle + "</b>"
-            else:
-                calculation = "<code>" + str(result_calc) + "</code>"
-    
-    keyboard_result = types.InlineKeyboardMarkup()
+    keycalc_inline_keyboard = types.InlineKeyboardMarkup()
 
-    if isinstance(result_calc, float):           
-        key_one = types.InlineKeyboardButton(text='Округлить до 1 знака', callback_data='round_one')
-        key_two = types.InlineKeyboardButton(text='Округлить до 2 знаков', callback_data='round_two')
-        keyboard_result.add(key_one, key_two)
+    if isinstance(result_keycalc, float):           
+        key_one = types.InlineKeyboardButton(text='Округлить до 2-x знаков', callback_data='round_two')
+        key_two = types.InlineKeyboardButton(text='Округлить до 3-х знаков', callback_data='round_three')
+        keycalc_inline_keyboard.add(key_one, key_two) 
+        # if angle == "rad":
+        #     key_angle = types.InlineKeyboardButton(text='Перевести в градусы', callback_data='degree_change')
+        #     keycalc_inline_keyboard.add(key_angle)
+        
+       
+          
+
+    str_keycalc = "Результат вычисления " + keycalc_oper + " = " + "<code>" + str(result_keycalc) + "</code> " + angle
     
-    if angle == "rad":
-        key_angle = types.InlineKeyboardButton(text='Перевести в градусы', callback_data='degree_change')
-        keyboard_result.add(key_angle)
-     
-    result_calculation = "Результат вычисления " + user_oper + " = " + calculation 
-    bot.send_message(cid, result_calculation, parse_mode="HTML", reply_markup=keyboard_result)
-    engineer_oper(message)       
+    bot.send_message(cid, str_keycalc, parse_mode = "HTML", reply_markup = keycalc_inline_keyboard)
+    command_keycalc(message)       
  
 
 
 @bot.message_handler(commands=["onematrix"])
-def engineer_oper(message):
+def command_onematrix(message):
     cid = message.chat.id
-    text = message.text
     choose_msg = f"""Введите матрицу первую матрицу. \n(либо \"==\" для отмены)"""
     msg = bot.send_message(cid, choose_msg)
-    bot.register_next_step_handler(msg, matrix_oper)
+    bot.register_next_step_handler(msg, onematrix_input)
     
 
-def matrix_oper(message):
+def onematrix_input(message):
     cid = message.chat.id
     text = message.text
-    if message.text == "==":
+    if text == "==":
         bot.send_message(cid, "Возвращаюсь")
         return
-    else:
-        tes = [val.split(",") for val in text.split("\n")]
-        new_tes = [list(map(int, tes[idx])) for idx in range(0, len(tes))]
 
-        arr_test = np.array(new_tes, int)
+    tes = [val.split(",") for val in text.split("\n")]
+    new_tes = [list(map(int, tes[idx])) for idx in range(0, len(tes))]
+    arr_one = np.array(new_tes, int)
+    markup_one_matrix = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup_one_matrix.add(types.KeyboardButton("Транспонировать"), types.KeyboardButton("Найти определитель"),
+                            types.KeyboardButton("Обратная матрица"),types.KeyboardButton("Среднее арифметическое"),
+                            types.KeyboardButton("Собственный вектор"), types.KeyboardButton("Отмена"))
+
+    msg = f"""Матрица размером {arr_one.shape}:\n{arr_one}\n Какие операции выполнить над ней?"""
+    bot_msg = bot.send_message(cid, msg, reply_markup=markup_one_matrix)
+    bot.register_next_step_handler(bot_msg, onematrix_oper, arr_one)
+
+def onematrix_oper(message, arr_one):
+    cid = message.chat.id
+    text = message.text
+    oper_arr = arr_one.copy()
     
-        bot.send_message(cid, f"""Матрица размером {arr_test.shape}:\n{arr_test}\n Какие операции выполнить над ней?""")
+    if text == "Отмена": 
+        bot.send_message(cid, "Возвращаюсь", reply_markup=types.ReplyKeyboardRemove(selective=True))
+        return
+        
+    elif text == "Транспонировать":      
+        result_arr = oper_arr.transpose()
+        msg = f"""Транспонированная матрица размером {result_arr.shape}:\n{result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Найти определитель":
+        result_arr = np.linalg.det(oper_arr)
+        msg = f"""Определитель матрицы:\n{oper_arr}\nРавняется - {result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Обратная матрица":
+        result_arr = np.linalg.inv(oper_arr)
+        msg = f"""Обратная матрица размером {result_arr.shape}:\n{result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Среднее арифметическое":
+        result_arr = oper_arr.mean()
+        msg = f"""Среднее арифметическое матрицы:\n{oper_arr}\nРавняется - {result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Собственный вектор":
+        result_arr, vecs = np.linalg.eig(oper_arr)
+        msg = f"""Собственный вектор матрицы:\n{oper_arr}\nРавняется - {result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
 
     
 
@@ -181,37 +216,41 @@ def callbackFunction(call):
     user = call.from_user.id
     message_id =  call.message.message_id
     markup = call.message.reply_markup
-    calc = result_calc
+    text = call.message.text
+    split_call = re.split(r" = ", text)
+    call_result = float(re.findall(r"\d+\.\d+", split_call[1])[0])
+    # call_oper = re.findall(r"[^А-я ]+\w+\W+[^=]?\b",re.split(str(call_result),text)[0])[0]
+    call_oper = re.findall(r"[^А-я ]+\w+\W+\w*\b",split_call[0])[0]
     call_angle = "rad"
     
-    if call.data == "round_one":
+    if call.data == "round_two":
         
-        result_calculation = "Результат вычисления " + user_oper + " = " + "<code>" + str(round(calc,1)) + "</code>" + " <b>" + call_angle + "</b>"
+        result_calculation = "Результат округления выражения " + call_oper + " = " + "<code>" + str(round(result,2)) + "</code>" + " <b>" + call_angle + "</b>"
         bot.edit_message_text(result_calculation,user,message_id, parse_mode="HTML", reply_markup=markup)
     
-    elif call.data == "round_two":
-        
-        result_calculation = "Результат вычисления " + user_oper + " = " + "<code>" + str(round(calc,2)) + "</code>" + " <b>" + call_angle + "</b>"  
+    elif call.data == "round_three":
+
+        result_calculation = "Результат округления выражения " + call_oper + " = " + "<code>" + str(round(result,3)) + "</code>" + " <b>" + call_angle + "</b>"  
         bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML", reply_markup=markup)
     
     
     elif call.data == "degree_change":
-        
-        call_angle = "deg"
-        calc = operation(perem*math.pi/180)
-        result_calculation = "Результат вычисления " + user_oper + " = " + "<code>" + str(calc) + "</code>" + " <b>" + call_angle + "</b>"
-        markup.keyboard[1][0].callback_data = 'radians_change'
-        markup.keyboard[1][0].text = 'Перевести в радианы'
-        bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML",  reply_markup=markup)
+        pass
+        # call_angle = "deg"
+        # calc_call = (eval_expression(call_oper)*math.pi/180)
+        # result_calculation = "Результат вычисления " + call_oper + " = " + "<code>" + str(calc_call) + "</code>" + " <b>" + call_angle + "</b>"
+        # markup.keyboard[1][0].callback_data = 'radians_change'
+        # markup.keyboard[1][0].text = 'Перевести в радианы'
+        # bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML",  reply_markup=markup)
         
     elif call.data == "radians_change":
-        
-        call_angle = "rad"
-        calc = operation(perem)
-        result_calculation = "Результат вычисления " + user_oper + " = " + "<code>" + str(calc) + "</code>" + " <b>" + call_angle + "</b>"
-        markup.keyboard[1][0].callback_data = 'degree_change'
-        markup.keyboard[1][0].text = 'Перевести в градусы'
-        bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML", reply_markup=markup) 
+        pass
+        # call_angle = "rad"
+        # calc_call = eval_expression(call_oper)
+        # result_calculation = "Результат вычисления " + call_oper + " = " + "<code>" + str(calc_call) + "</code>" + " <b>" + call_angle + "</b>"
+        # markup.keyboard[1][0].callback_data = 'degree_change'
+        # markup.keyboard[1][0].text = 'Перевести в градусы'
+        # bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML", reply_markup=markup) 
 
 
            
