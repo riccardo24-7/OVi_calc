@@ -4,9 +4,10 @@ import math
 from telebot import types
 import re
 import numpy as np
+from config.config import TOKEN_BOT
 
 
-bot = telebot.TeleBot("")
+bot = telebot.TeleBot(TOKEN_BOT)
 
 
 @bot.message_handler(commands=["start", "help"])
