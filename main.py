@@ -21,7 +21,7 @@ def start_bot(message):
         bot.send_message(cid, start_msg)
         
     elif message.text == "/help":
-        help_msg = ""
+        help_msg = f"""Этот калькулятор способен производить рассчеты разной сложности"""
         bot.send_message(cid, "Cправка не составлена")
 
 
@@ -41,7 +41,7 @@ def calc_expression(message):
         bot.send_message(cid, "Возвращаюсь")
         return
     else:
-        result_calc = eval_expression(calc_oper)
+        result_calc = eval_expression(calc_oper, message, cid, command_calc)
         
         calc_inline_keyboard = types.InlineKeyboardMarkup()
 
@@ -54,7 +54,7 @@ def calc_expression(message):
         command_calc(message)
 
 
-def eval_expression(input_string):
+def eval_expression(input_string, message, cid, oper_calc):
     global result
     allowed_names = {
         "ln":    math.log,
@@ -64,12 +64,21 @@ def eval_expression(input_string):
         "sin":   math.sin,
         "cos":   math.cos,
         "tg":    math.tan
-        }   
-    code = compile(input_string, "<string>", "eval")  
-    for name in code.co_names:
-        if name not in allowed_names:
-            raise NameError("Not allowed")
-    result = eval(code, {"__builtins__": {}}, allowed_names)
+        }
+    try:   
+        code = compile(input_string, "<string>", "eval")  
+        for name in code.co_names:
+            if name not in allowed_names:
+                raise NameError("Not allowed")
+        result = eval(code, {"__builtins__": {}}, allowed_names)
+    except SyntaxError as synerr:
+        bot.send_message(cid, "У Вас синтаксическая ошибка, либо такой функции я не знаю, попробуйте ещё раз")
+        oper_calc(message)
+    except TypeError as typeerr:
+        bot.send_message(cid, "Нецелочисленные значения лучше указывать через точку, попробуйте ещё раз")
+        oper_calc(message)        
+        
+        
     return result
     
     
@@ -115,14 +124,14 @@ def keycalc_pattern(message, keycalc_oper):
         bot.send_message(cid, "Возвращаюсь", reply_markup= markup_close)
         return
     
-    # if len(text) == 1:
+
     text = re.sub(r"\([n]\)", "(" + text + ")", keycalc_oper)
     if keycalc_oper == "x**n":
         list_text = text.split(" ")
         text = re.sub(r"[x]", list_text[0], keycalc_oper)
         text = re.sub(r"[n]+", list_text[1], text)
     
-    result_keycalc = eval_expression(text)
+    result_keycalc = eval_expression(text, message, cid, command_keycalc)
     
     if keycalc_oper in ["sin(n)", "cos(n)", "tg(n)"]:
         angle = "rad" 
@@ -133,9 +142,6 @@ def keycalc_pattern(message, keycalc_oper):
         key_one = types.InlineKeyboardButton(text='Округлить до 2-x знаков', callback_data='round_two')
         key_two = types.InlineKeyboardButton(text='Округлить до 3-х знаков', callback_data='round_three')
         keycalc_inline_keyboard.add(key_one, key_two) 
-        # if angle == "rad":
-        #     key_angle = types.InlineKeyboardButton(text='Перевести в градусы', callback_data='degree_change')
-        #     keycalc_inline_keyboard.add(key_angle)
         
        
           
@@ -218,8 +224,6 @@ def callbackFunction(call):
     markup = call.message.reply_markup
     text = call.message.text
     split_call = re.split(r" = ", text)
-    call_result = float(re.findall(r"\d+\.\d+", split_call[1])[0])
-    # call_oper = re.findall(r"[^А-я ]+\w+\W+[^=]?\b",re.split(str(call_result),text)[0])[0]
     call_oper = re.findall(r"[^А-я ]+\w+\W+\w*\b",split_call[0])[0]
     call_angle = "rad"
     
@@ -232,25 +236,6 @@ def callbackFunction(call):
 
         result_calculation = "Результат округления выражения " + call_oper + " = " + "<code>" + str(round(result,3)) + "</code>" + " <b>" + call_angle + "</b>"  
         bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML", reply_markup=markup)
-    
-    
-    elif call.data == "degree_change":
-        pass
-        # call_angle = "deg"
-        # calc_call = (eval_expression(call_oper)*math.pi/180)
-        # result_calculation = "Результат вычисления " + call_oper + " = " + "<code>" + str(calc_call) + "</code>" + " <b>" + call_angle + "</b>"
-        # markup.keyboard[1][0].callback_data = 'radians_change'
-        # markup.keyboard[1][0].text = 'Перевести в радианы'
-        # bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML",  reply_markup=markup)
-        
-    elif call.data == "radians_change":
-        pass
-        # call_angle = "rad"
-        # calc_call = eval_expression(call_oper)
-        # result_calculation = "Результат вычисления " + call_oper + " = " + "<code>" + str(calc_call) + "</code>" + " <b>" + call_angle + "</b>"
-        # markup.keyboard[1][0].callback_data = 'degree_change'
-        # markup.keyboard[1][0].text = 'Перевести в градусы'
-        # bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML", reply_markup=markup) 
 
 
            
