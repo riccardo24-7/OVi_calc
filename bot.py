@@ -65,18 +65,18 @@ def eval_expression(input_string, message, cid, oper_calc):
         "cos":   math.cos,
         "tg":    math.tan
         }
-    try:   
-        code = compile(input_string, "<string>", "eval")  
-        for name in code.co_names:
-            if name not in allowed_names:
-                raise NameError("Not allowed")
-        result = eval(code, {"__builtins__": {}}, allowed_names)
-    except SyntaxError as synerr:
-        bot.send_message(cid, "У Вас синтаксическая ошибка, либо такой функции я не знаю, попробуйте ещё раз")
-        oper_calc(message)
-    except TypeError as typeerr:
-        bot.send_message(cid, "Нецелочисленные значения лучше указывать через точку, попробуйте ещё раз")
-        oper_calc(message)        
+    # try:   
+    code = compile(input_string, "<string>", "eval")  
+    for name in code.co_names:
+        if name not in allowed_names:
+            raise NameError("Not allowed")
+    result = eval(code, {"__builtins__": {}}, allowed_names)
+    # except SyntaxError as synerr:
+    #     bot.send_message(cid, "У Вас синтаксическая ошибка, либо такой функции я не знаю, попробуйте ещё раз")
+    #     oper_calc(message)
+    # except TypeError as typeerr:
+    #     bot.send_message(cid, "Нецелочисленные значения лучше указывать через точку, попробуйте ещё раз")
+    #     oper_calc(message)        
         
         
     return result
@@ -142,6 +142,9 @@ def keycalc_pattern(message, keycalc_oper):
         key_one = types.InlineKeyboardButton(text='Округлить до 2-x знаков', callback_data='round_two')
         key_two = types.InlineKeyboardButton(text='Округлить до 3-х знаков', callback_data='round_three')
         keycalc_inline_keyboard.add(key_one, key_two) 
+        # if angle == "rad":
+        #     key_angle = types.InlineKeyboardButton(text='Перевести в градусы', callback_data='degree_change')
+        #     keycalc_inline_keyboard.add(key_angle)
         
        
           
@@ -156,7 +159,7 @@ def keycalc_pattern(message, keycalc_oper):
 @bot.message_handler(commands=["onematrix"])
 def command_onematrix(message):
     cid = message.chat.id
-    choose_msg = f"""Введите матрицу первую матрицу. \n(либо \"==\" для отмены)"""
+    choose_msg = f"""Введите одну матрицу, разделяя строки матрицы через Shift + Enter. \n(либо \"==\" для отмены)"""
     msg = bot.send_message(cid, choose_msg)
     bot.register_next_step_handler(msg, onematrix_input)
     
@@ -168,7 +171,7 @@ def onematrix_input(message):
         bot.send_message(cid, "Возвращаюсь")
         return
 
-    tes = [val.split(",") for val in text.split("\n")]
+    tes = [val.split(" ") for val in text.split("\n")]
     new_tes = [list(map(int, tes[idx])) for idx in range(0, len(tes))]
     arr_one = np.array(new_tes, int)
     markup_one_matrix = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -214,7 +217,72 @@ def onematrix_oper(message, arr_one):
         msg = f"""Собственный вектор матрицы:\n{oper_arr}\nРавняется - {result_arr}"""
         bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
 
+@bot.message_handler(commands=["twomatrix"])
+def command_twomatrix(message):
+    cid = message.chat.id
+    choose_msg = f"""Введите две матрицу, разделяя строки одной матрицы через Shift + Enter, а матрицы друг от друга отделяются символом "#". \n(либо \"==\" для отмены)"""
+    msg = bot.send_message(cid, choose_msg)
+    bot.register_next_step_handler(msg, twomatrix_input)   
+
+def twomatrix_input(message):
+    cid = message.chat.id
+    text = message.text
+    if text == "==":
+        bot.send_message(cid, "Возвращаюсь")
+        return
+    all_matrix = re.split(r"#\n", text)
+    first_matrix = [val.split(" ") for val in all_matrix[0].split("\n") if val != ""]
+    second_matrix = [val.split(" ") for val in all_matrix[1].split("\n") if val != ""]
+    int_first_matrix = [list(map(int, first_matrix[idx])) for idx in range(0, len(first_matrix))]
+    int_second_matrix = [list(map(int, second_matrix[idx])) for idx in range(0, len(second_matrix))]
+    arr_one = np.array(int_first_matrix, int)
+    arr_two = np.array(int_second_matrix, int)
+    markup_two_matrix = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup_two_matrix.add(types.KeyboardButton("Сумма матриц"), types.KeyboardButton("Разность матриц"),
+                            types.KeyboardButton("Произведение матриц"),types.KeyboardButton("Произведение Кронекера"),
+                            types.KeyboardButton("Отмена"))
+
+    msg = f"""Матрица 1 размером {arr_one.shape}:\n{arr_one}\nМатрица 2 размером {arr_two.shape}:\n{arr_two}\nКакие операции выполнить над ней?"""
+    bot_msg = bot.send_message(cid, msg, reply_markup=markup_two_matrix)
+    bot.register_next_step_handler(bot_msg, twomatrix_oper, arr_one, arr_two)
     
+def twomatrix_oper(message, arr_one, arr_two):
+    cid = message.chat.id
+    text = message.text
+    oper_arr_one = arr_one.copy()
+    oper_arr_two = arr_two.copy()
+    result_arr = np.array([], int)
+    if text == "Отмена": 
+        bot.send_message(cid, "Возвращаюсь", reply_markup=types.ReplyKeyboardRemove(selective=True))
+        return
+    elif text == "Сумма матриц":
+        result_arr = oper_arr_one + oper_arr_two
+        msg = f"""Получилась матрица размером {result_arr.shape}:\n{result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Разность матриц":
+        result_arr = oper_arr_one - oper_arr_two
+        msg = f"""Получилась матрица размером {result_arr.shape}:\n{result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Произведение матриц":
+        result_arr = np.dot(oper_arr_one, oper_arr_two)
+        msg = f"""Получилась матрица размером {result_arr.shape}:\n{result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    elif text == "Произведение Кронекера":
+        result_arr = np.kron(oper_arr_one, oper_arr_two)
+        msg = f"""Получилась матрица размером {result_arr.shape}:\n{result_arr}"""
+        bot.send_message(cid, msg, reply_markup=types.ReplyKeyboardRemove(selective=True))
+        
+    markup_one_matrix = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup_one_matrix.add(types.KeyboardButton("Транспонировать"), types.KeyboardButton("Найти определитель"),
+                            types.KeyboardButton("Обратная матрица"),types.KeyboardButton("Среднее арифметическое"),
+                            types.KeyboardButton("Собственный вектор"), types.KeyboardButton("Отмена"))
+
+    msg = f"""Какие операции выполнить над ней?"""
+    bot_msg = bot.send_message(cid, msg, reply_markup=markup_one_matrix)
+    bot.register_next_step_handler(bot_msg, onematrix_oper, result_arr)        
 
 @bot.callback_query_handler(func=lambda call: True)
 def callbackFunction(call):
@@ -236,6 +304,12 @@ def callbackFunction(call):
 
         result_calculation = "Результат округления выражения " + call_oper + " = " + "<code>" + str(round(result,3)) + "</code>" + " <b>" + call_angle + "</b>"  
         bot.edit_message_text(result_calculation,user, message_id, parse_mode="HTML", reply_markup=markup)
+    
+    elif call.data == "degree_change":
+        pass
+        
+    elif call.data == "radians_change":
+        pass
 
 
            
